@@ -1,0 +1,375 @@
+:root{
+    --primary:#2563eb;
+    --primaryHover:#1d4ed8;
+    --danger:#dc2626;
+    --dangerHover:#b91c1c;
+    --border:#e5e7eb;
+    --muted:#6b7280;
+}
+
+html, body, #app {
+    margin:0;
+    padding:0;
+    height:100%;
+    font-family:
+            "Inter",
+            "Segoe UI",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Roboto",
+            "Helvetica Neue",
+            Arial,
+            sans-serif !important;
+    font-size:13px;
+    color:#111827;
+    background:#f3f4f6;
+}
+
+*, *::before, *::after {
+    font-family: inherit !important;
+    box-sizing:border-box;
+}
+
+h1,h2,h3,h4,h5,h6,p{
+    margin:0;
+}
+
+.container{
+    max-width:1280px;
+    margin:0 auto;
+    padding:20px;
+}
+
+.card{
+    background:#fff;
+    border-radius:8px;
+    box-shadow:0 1px 3px rgba(0,0,0,.08);
+    overflow:hidden;
+}
+
+.input, .textarea{
+    width:100%;
+    border:1px solid #d1d5db;
+    border-radius:6px;
+    padding:6px 8px;
+    font-size:13px;
+    background:#fff;
+}
+
+.input:focus,
+.textarea:focus{
+    outline:none;
+    border-color:var(--primary);
+    box-shadow:0 0 0 2px rgba(37,99,235,.15);
+}
+
+.btnPrimary{
+    background:var(--primary);
+    color:#fff;
+    border:none;
+    padding:6px 14px;
+    border-radius:6px;
+    cursor:pointer;
+    font-weight:600;
+}
+
+.btnPrimary:hover{ background:var(--primaryHover); }
+
+.btn{
+    background:#e5e7eb;
+    border:none;
+    padding:6px 14px;
+    border-radius:6px;
+    cursor:pointer;
+}
+
+.btnDanger{
+    background:var(--danger);
+    color:#fff;
+    border:none;
+    padding:6px 14px;
+    border-radius:6px;
+    cursor:pointer;
+}
+
+.btnDanger:hover{ background:var(--dangerHover); }
+
+.err{
+    color:#b91c1c;
+    background:#fee2e2;
+    padding:10px;
+    border-radius:6px;
+    margin-bottom:10px;
+}
+
+.pageHeader{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:12px;
+}
+
+.pageTitle{
+    font-size:22px;
+    font-weight:700;
+    margin:0;
+}
+
+.table{
+    width:100%;
+    border-collapse:collapse;
+}
+
+.table th{
+    text-align:left;
+    font-size:14px;
+    color:#111827;
+    background:#f3f4f6;
+    padding:10px 12px;
+    border-bottom:0 solid var(--border);
+    font-weight:900;
+    line-height:1;
+}
+
+.table td{
+    padding:10px 12px;
+    border-bottom:1px solid #e5e7eb;
+    vertical-align:middle;
+    background:#fff;
+    line-height:1.2;
+}
+
+.link{
+    color:var(--primary);
+    font-weight:700;
+    text-decoration:none;
+}
+.link:hover{ text-decoration:underline; }
+
+.empty{
+    text-align:center;
+    padding:16px;
+    color:var(--muted);
+}
+
+.dtControls{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 12px;
+    background:#f3f4f6;
+    border-bottom:1px solid var(--border);
+    gap:12px;
+}
+
+.dtLeft, .dtRight{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+}
+
+.dtSelect{
+    border:1px solid #d1d5db;
+    border-radius:6px;
+    padding:5px 8px;
+    background:#fff;
+}
+
+.dtSearchLabel,
+.lbl,
+.modalTitle{
+    font-weight:800;
+    font-size:13px;
+    color:#111827;
+}
+
+.dtSearchInput{
+    border:1px solid #d1d5db;
+    border-radius:6px;
+    padding:6px 8px;
+    min-width:180px;
+    background:#fff;
+}
+
+.dtFooter{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 12px;
+    background:#fff;
+}
+
+.dtInfo{ color:var(--muted); font-size:13px; }
+.dtPager{ display:flex; gap:8px; }
+.dtPagerBtn{
+    border:1px solid #d1d5db;
+    border-radius:6px;
+    padding:6px 10px;
+    background:#fff;
+    cursor:pointer;
+    font-weight:800;
+}
+.dtPagerBtn:disabled{ opacity:.6; cursor:not-allowed; }
+.dtPagerBtn:not(:disabled):hover{ background:#f9fafb; }
+
+.striped tbody tr:nth-child(even) td{ background:#f5f5f5; }
+.colGps{ width:90px; text-align:left; }
+.mapLink{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:28px;
+    height:28px;
+    border-radius:6px;
+    text-decoration:none;
+}
+.mapLink:hover{ background:#e5e7eb; }
+.mapIcon{ font-size:16px; }
+
+.statusPill{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:56px;
+    padding:6px 12px;
+    border-radius:999px;
+    font-size:12px;
+    font-weight:800;
+}
+.statusPillOn{
+    background:#dcfce7;
+    color:#166534;
+}
+.statusPillOff{
+    background:#fee2e2;
+    color:#991b1b;
+}
+
+.modalOverlay{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.25);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+    z-index:50;
+}
+
+.modalCard{
+    width:min(980px, 100%);
+    background:#fff;
+    border-radius:8px;
+    box-shadow:0 20px 60px rgba(0,0,0,.20);
+    overflow:hidden;
+}
+
+.modalCard.wide{ width:min(1260px, 100%); }
+
+.modalHeader{
+    padding:10px 14px;
+    border-bottom:1px solid #e5e7eb;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+}
+
+.pillDeleted{
+    font-size:12px;
+    font-weight:900;
+    padding:3px 8px;
+    border-radius:999px;
+    background:#fee2e2;
+    color:#991b1b;
+}
+
+.modalBody{ padding:18px 22px; }
+.formTwoCol{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:40px;
+}
+.formCol{ display:flex; flex-direction:column; gap:12px; }
+.row{
+    display:grid;
+    grid-template-columns: 150px 1fr;
+    gap:12px;
+    align-items:center;
+}
+.lbl{ text-align:right; }
+.ctl{ width:100%; }
+.modalFooter{
+    padding:12px 14px;
+    border-top:1px solid #e5e7eb;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+}
+.actions{
+    display:flex;
+    align-items:center;
+    gap:10px;
+}
+
+@media (max-width: 900px) {
+    .container { padding: 12px; }
+    .pageHeader, .dtControls, .dtFooter, .modalHeader, .modalFooter { gap: 10px; flex-wrap: wrap; }
+    .formTwoCol { grid-template-columns: 1fr; gap: 20px; }
+    .row { grid-template-columns: 1fr; }
+    .lbl { text-align: left; }
+}
+
+
+/* Geofence modal label/input alignment patch */
+.row {
+    grid-template-columns: 170px minmax(0, 1fr);
+    gap: 14px;
+    align-items: center;
+}
+
+.lbl {
+    text-align: right;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-height: 34px;
+    line-height: 1.2;
+}
+
+.lbl::after {
+    content: ':';
+    margin-left: 4px;
+}
+
+.row.tall .lbl {
+    min-height: 40px;
+}
+
+.mapCell {
+    cursor: pointer;
+}
+
+.mapBtn {
+    border: none;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+}
+
+.mapCell:hover .mapLink,
+.mapBtn:hover {
+    background: #e5e7eb;
+}
+
+@media (max-width: 900px) {
+    .row {
+        grid-template-columns: 1fr;
+    }
+
+    .lbl {
+        text-align: left;
+        justify-content: flex-start;
+        min-height: auto;
+    }
+}
