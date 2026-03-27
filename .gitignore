@@ -40,3 +40,5 @@ backend/storage/framework/views/*
 !backend/storage/framework/sessions/.gitignore
 !backend/storage/framework/testing/.gitignore
 !backend/storage/framework/views/.gitignore
+
+!backend/.env.example
