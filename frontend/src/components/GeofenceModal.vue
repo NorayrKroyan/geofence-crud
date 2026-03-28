@@ -662,10 +662,19 @@ function normalizePoint(value) {
 }
 
 function getFallbackCenter() {
-  const lat = Number(form.center_point_lat)
-  const lng = Number(form.center_point_lng)
-  if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng }
-  return { lat: 40.1772, lng: 44.5035 }
+  const rawLat = String(form.center_point_lat ?? '').trim()
+  const rawLng = String(form.center_point_lng ?? '').trim()
+
+  if (rawLat !== '' && rawLng !== '') {
+    const lat = Number(rawLat)
+    const lng = Number(rawLng)
+
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return { lat, lng }
+    }
+  }
+
+  return { lat: 41.1400, lng: -104.8200 }
 }
 
 function normalizeNullableNumber(value) {
@@ -1049,3 +1058,5 @@ onBeforeUnmount(() => {
   }
 }
 </style>
+
+
