@@ -1,4 +1,5 @@
-const BASE_URL = '/api/geofences'
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
+const BASE_URL = `${API_BASE}/geofences`
 
 function firstValidationMessage(payload) {
   const errors = payload?.errors
@@ -6,6 +7,7 @@ function firstValidationMessage(payload) {
 
   const firstKey = Object.keys(errors)[0]
   if (!firstKey || !Array.isArray(errors[firstKey]) || !errors[firstKey].length) return ''
+
   return errors[firstKey][0]
 }
 
@@ -22,7 +24,11 @@ async function request(url, options = {}) {
   const payload = await response.json().catch(() => null)
 
   if (!response.ok) {
-    const error = new Error(payload?.message || firstValidationMessage(payload) || `Request failed with status ${response.status}`)
+    const error = new Error(
+        payload?.message ||
+        firstValidationMessage(payload) ||
+        `Request failed with status ${response.status}`
+    )
     error.status = response.status
     error.errors = payload?.errors || null
     error.payload = payload
