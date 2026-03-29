@@ -2,7 +2,11 @@
   <div class="container">
     <div class="pageHeader">
       <p class="pageTitle">Geofence List</p>
-      <button class="btnPrimary" @click="openNew">New Geofence</button>
+
+      <div class="pageHeaderActions">
+        <router-link class="btn" :to="{ name: 'device-history' }">Device history</router-link>
+        <button class="btnPrimary" @click="openNew">New Geofence</button>
+      </div>
     </div>
 
     <div v-if="err" class="err">{{ err }}</div>
