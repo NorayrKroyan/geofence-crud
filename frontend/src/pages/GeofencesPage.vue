@@ -166,7 +166,6 @@ const filtered = computed(() => {
     return [
       row.id,
       row.name,
-      row.event_id,
       row.entry_action,
       row.exit_action,
       row.notes,

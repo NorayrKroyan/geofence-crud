@@ -28,13 +28,6 @@
                   </div>
 
                   <div class="row">
-                    <div class="lbl">Event ID</div>
-                    <div class="ctl">
-                      <input v-model="form.event_id" class="input" type="number" min="1" />
-                    </div>
-                  </div>
-
-                  <div class="row">
                     <div class="lbl">Name</div>
                     <div class="ctl">
                       <input v-model.trim="form.name" class="input-xl" type="text" />
@@ -278,7 +271,6 @@ watch(
 function blankForm() {
   return {
     id: null,
-    event_id: '',
     trigger_zone: '',
     bounding_box: '',
     bounding_box_center: '',
@@ -326,7 +318,6 @@ function applyGeofence(item) {
   if (!item) return
 
   form.id = item.id ?? null
-  form.event_id = item.event_id ?? ''
   form.trigger_zone = stringifyIfNeeded(item.trigger_zone)
   form.bounding_box = stringifyIfNeeded(item.bounding_box)
   form.bounding_box_center = stringifyIfNeeded(item.bounding_box_center)
@@ -367,7 +358,6 @@ function toDatetimeLocal(value) {
 
 function toPayload() {
   return {
-    event_id: normalizeNullableInt(form.event_id),
     trigger_zone: blankToNull(form.trigger_zone),
     bounding_box: blankToNull(form.bounding_box),
     bounding_box_center: blankToNull(form.bounding_box_center),

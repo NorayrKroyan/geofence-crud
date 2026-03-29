@@ -67,7 +67,6 @@ class GeofenceController extends Controller
     protected function validated(Request $request, bool $isCreate): array
     {
         $data = $request->validate([
-            'event_id' => ['nullable', 'integer', 'min:1'],
             'trigger_zone' => ['nullable'],
             'bounding_box' => ['nullable'],
             'bounding_box_center' => ['nullable'],
@@ -135,7 +134,6 @@ class GeofenceController extends Controller
     {
         return [
             'id' => $geofence->id,
-            'event_id' => $geofence->event_id,
             'trigger_zone' => $geofence->trigger_zone,
             'trigger_zone_data' => $this->decodeJson($geofence->trigger_zone),
             'bounding_box' => $geofence->bounding_box,

@@ -12,7 +12,6 @@ class Geofence extends Model
     protected $table = 'geofences';
 
     protected $fillable = [
-        'event_id',
         'trigger_zone',
         'bounding_box',
         'bounding_box_center',
@@ -32,7 +31,6 @@ class Geofence extends Model
     ];
 
     protected $casts = [
-        'event_id' => 'integer',
         'center_point_lat' => 'decimal:7',
         'center_point_lng' => 'decimal:7',
         'speed_limit_kph' => 'integer',
