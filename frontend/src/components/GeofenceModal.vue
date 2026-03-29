@@ -537,6 +537,8 @@ function clearPolygon() {
     polygon.setMap(null)
     polygon = null
   }
+
+  form.trigger_zone = ''
   form.geometry_json = ''
   form.polygon_points = ''
   form.bounding_box = ''
@@ -548,7 +550,11 @@ function clearPolygon() {
 function syncFormFromPolygon(fit = false) {
   if (!polygon) return
 
-  const points = polygon.getPath().getArray().map((point) => ({ lat: roundCoord(point.lat()), lng: roundCoord(point.lng()) }))
+  const points = polygon.getPath().getArray().map((point) => ({
+    lat: roundCoord(point.lat()),
+    lng: roundCoord(point.lng()),
+  }))
+
   const bounds = new googleMaps.LatLngBounds()
   points.forEach((point) => bounds.extend(point))
 
@@ -558,6 +564,7 @@ function syncFormFromPolygon(fit = false) {
 
   form.center_point_lat = roundCoord(center.lat())
   form.center_point_lng = roundCoord(center.lng())
+
   form.bounding_box = JSON.stringify(
       {
         north: roundCoord(northEast.lat()),
@@ -568,15 +575,23 @@ function syncFormFromPolygon(fit = false) {
       null,
       2,
   )
+
   form.bounding_box_center = JSON.stringify(
-      { lat: roundCoord(center.lat()), lng: roundCoord(center.lng()) },
+      {
+        lat: roundCoord(center.lat()),
+        lng: roundCoord(center.lng()),
+      },
       null,
       2,
   )
+
+  form.trigger_zone = JSON.stringify(points, null, 2)
   form.polygon_points = JSON.stringify(points, null, 2)
   form.geometry_json = JSON.stringify({ paths: points }, null, 2)
 
-  if (fit && map) map.fitBounds(bounds)
+  if (fit && map) {
+    map.fitBounds(bounds)
+  }
 }
 
 function fitPolygon() {
