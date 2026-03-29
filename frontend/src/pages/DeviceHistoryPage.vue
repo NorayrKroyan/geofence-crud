@@ -335,7 +335,14 @@ const selectedDevice = computed(() => {
   return devices.value.find((device) => device.device_id === filters.value.device_id) || null
 })
 
-const selectedDeviceLastSeen = computed(() => selectedDevice.value?.last_seen_at || null)
+const selectedDeviceLastSeen = computed(() => {
+  if (rows.value.length) {
+    const lastRow = rows.value[rows.value.length - 1]
+    return lastRow?.display_time || lastRow?.device_dtm || lastRow?.timestamp || null
+  }
+
+  return selectedDevice.value?.last_seen_at || null
+})
 
 const totalTableRows = computed(() => rows.value.length)
 
@@ -730,7 +737,12 @@ function toLocalInputValue(date) {
 
 function toApiDateTime(value) {
   if (!value) return ''
-  return `${value.replace('T', ' ')}:00`
+
+  const localDate = new Date(value)
+
+  if (Number.isNaN(localDate.getTime())) return ''
+
+  return localDate.toISOString()
 }
 
 function formatDateTime(value) {
