@@ -106,11 +106,37 @@
           <div v-if="!props.mapOnly && isDesktop" class="splitDivider" @mousedown.prevent="startSplitResize"></div>
 
           <div class="splitRight" :class="{ mapOnlyPane: props.mapOnly }">
-            <div v-if="!props.mapOnly" class="mapTools">
-              <button class="btn" type="button" @click="startDrawingPolygon">Draw / Redraw</button>
-              <button class="btn" type="button" @click="clearPolygon">Clear</button>
-              <button class="btn" type="button" @click="fitPolygon">Fit</button>
-              <button class="btn" type="button" @click="syncFormFromPolygon(false)">Refresh Fields</button>
+            <div class="mapToolbarRow">
+              <div class="mapJumpInline">
+                <label class="mapJumpInlineLabel">Latitude</label>
+                <input
+                    v-model.trim="mapJumpLat"
+                    class="input mapJumpInlineInput"
+                    type="number"
+                    step="0.0000001"
+                    @keydown.enter.prevent="centerMapOnSearch"
+                />
+              </div>
+
+              <div class="mapJumpInline">
+                <label class="mapJumpInlineLabel">Longitude</label>
+                <input
+                    v-model.trim="mapJumpLng"
+                    class="input mapJumpInlineInput"
+                    type="number"
+                    step="0.0000001"
+                    @keydown.enter.prevent="centerMapOnSearch"
+                />
+              </div>
+
+              <button class="btn" type="button" @click="centerMapOnSearch">Center Map</button>
+
+              <template v-if="!props.mapOnly">
+                <button class="btn" type="button" @click="startDrawingPolygon">Draw / Redraw</button>
+                <button class="btn" type="button" @click="clearPolygon">Clear</button>
+                <button class="btn" type="button" @click="fitPolygon">Fit</button>
+                <button class="btn" type="button" @click="syncFormFromPolygon(false)">Refresh Fields</button>
+              </template>
             </div>
 
             <div class="mapMeta">
@@ -183,6 +209,8 @@ const splitPercent = ref(clamp(readStoredNumber(STORAGE_KEY_SPLIT, 22), SPLIT_MI
 const modalWidth = ref(readStoredNumber(STORAGE_KEY_W, 1260))
 const modalHeight = ref(readStoredNumber(STORAGE_KEY_H, 860))
 const mapCanvasRef = ref(null)
+const mapJumpLat = ref('')
+const mapJumpLng = ref('')
 
 let googleMaps = null
 let map = null
@@ -231,6 +259,7 @@ watch(
       mapError.value = ''
 
       await hydrateForm()
+      hydrateMapJumpInputs()
       await nextTick()
       await ensureMap()
       if (props.focusMapToken) fitPolygon()
@@ -242,6 +271,7 @@ watch(
     async () => {
       if (!props.open) return
       await hydrateForm()
+      hydrateMapJumpInputs()
       await nextTick()
       await ensureMap()
     },
@@ -336,6 +366,21 @@ function applyGeofence(item) {
   form.polygon_points = stringifyIfNeeded(item.polygon_points)
   form.created_at = item.created_at ?? ''
   form.updated_at = item.updated_at ?? ''
+}
+
+function hydrateMapJumpInputs() {
+  const rawLat = String(form.center_point_lat ?? '').trim()
+  const rawLng = String(form.center_point_lng ?? '').trim()
+
+  if (rawLat !== '' && rawLng !== '') {
+    mapJumpLat.value = rawLat
+    mapJumpLng.value = rawLng
+    return
+  }
+
+  const fallback = getFallbackCenter()
+  mapJumpLat.value = String(roundCoord(fallback.lat))
+  mapJumpLng.value = String(roundCoord(fallback.lng))
 }
 
 function stringifyIfNeeded(value) {
@@ -547,6 +592,37 @@ function clearPolygon() {
   form.center_point_lng = ''
 }
 
+function centerMapOnSearch() {
+  mapError.value = ''
+
+  if (!map) return
+
+  const lat = Number(mapJumpLat.value)
+  const lng = Number(mapJumpLng.value)
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    mapError.value = 'Enter valid latitude and longitude values.'
+    return
+  }
+
+  if (lat < -90 || lat > 90) {
+    mapError.value = 'Latitude must be between -90 and 90.'
+    return
+  }
+
+  if (lng < -180 || lng > 180) {
+    mapError.value = 'Longitude must be between -180 and 180.'
+    return
+  }
+
+  const target = { lat, lng }
+  map.panTo(target)
+
+  if (map.getZoom() < 15) {
+    map.setZoom(15)
+  }
+}
+
 function syncFormFromPolygon(fit = false) {
   if (!polygon) return
 
@@ -564,6 +640,9 @@ function syncFormFromPolygon(fit = false) {
 
   form.center_point_lat = roundCoord(center.lat())
   form.center_point_lng = roundCoord(center.lng())
+
+  mapJumpLat.value = String(form.center_point_lat)
+  mapJumpLng.value = String(form.center_point_lng)
 
   form.bounding_box = JSON.stringify(
       {
@@ -947,11 +1026,29 @@ onBeforeUnmount(() => {
   min-height: 30px;
 }
 
-.mapTools {
+.mapToolbarRow {
   display: flex;
+  align-items: end;
   gap: 6px;
   flex-wrap: wrap;
   margin-bottom: 8px;
+}
+
+.mapJumpInline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mapJumpInlineLabel {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.mapJumpInlineInput {
+  width: 150px;
 }
 
 .mapMeta {
@@ -1061,7 +1158,17 @@ onBeforeUnmount(() => {
     grid-template-columns: 54px 1fr;
     width: 100%;
   }
+
+  .mapToolbarRow {
+    align-items: stretch;
+  }
+
+  .mapJumpInline {
+    flex: 1 1 220px;
+  }
+
+  .mapJumpInlineInput {
+    width: 100%;
+  }
 }
 </style>
-
-

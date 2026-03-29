@@ -775,7 +775,9 @@ function formatCoordinate(value) {
 
 function formatSpeed(value) {
   if (value === null || value === undefined || value === '') return '—'
-  return `${Number(value).toFixed(1)} MPH`
+
+  const mph = Number(value) * 0.621371
+  return `${mph.toFixed(1)} MPH`
 }
 
 function formatBearing(value, cardinal = null) {
