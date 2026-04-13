@@ -35,7 +35,7 @@
         <tr>
           <th>Geofence Name</th>
           <th>Center</th>
-          <th>Speed Limit</th>
+          <th>Speed Limit MPH</th>
           <th style="text-align: center">Active</th>
           <th>Expire Date</th>
           <th style="text-align: center">Points</th>
@@ -56,7 +56,7 @@
           </td>
 
           <td>{{ formatCenter(g) }}</td>
-          <td>{{ g.speed_limit_kph ?? '—' }}</td>
+          <td>{{ formatSpeedLimitMph(g.speed_limit_kph) }}</td>
 
           <td style="text-align: center">
             <span class="statusPill statusPillTight" :class="g.is_active ? 'statusPillOn' : 'statusPillOff'">
@@ -174,6 +174,7 @@ const filtered = computed(() => {
       row.exit_action,
       row.notes,
       row.speed_limit_kph,
+      formatSpeedLimitMph(row.speed_limit_kph),
       row.center_point_lat,
       row.center_point_lng,
     ]
@@ -215,6 +216,13 @@ function pointCount(row) {
 function formatCenter(row) {
   if (row.center_point_lat == null || row.center_point_lng == null) return '—'
   return `${Number(row.center_point_lat).toFixed(5)}, ${Number(row.center_point_lng).toFixed(5)}`
+}
+
+function formatSpeedLimitMph(value) {
+  if (value === null || value === undefined || value === '') return '—'
+  const mph = Number(value) * 0.621371
+  if (!Number.isFinite(mph)) return '—'
+  return `${Math.round(mph)} MPH`
 }
 
 function formatDate(value) {

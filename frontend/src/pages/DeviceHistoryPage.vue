@@ -182,46 +182,34 @@
             <tr
                 v-for="row in paginatedRows"
                 :key="row.id"
-                class="historyClickable"
+                class="historyClickable historyTableRowTight"
                 @click="focusRow(row)"
             >
-              <td>
-                <div>{{ formatDateTime(row.display_time) }}</div>
-                <div class="historyMuted">
-                  {{ row.device_dtm ? 'Device time' : 'Server time' }}
-                </div>
+              <td class="historyTableCellOneLine">
+                {{ formatDateTime(row.display_time) }}
               </td>
 
-              <td>
-                <div>{{ formatCoordinate(row.latitude) }}, {{ formatCoordinate(row.longitude) }}</div>
-                <div class="historyMuted">
-                  ID: {{ row.id }}
-                </div>
+              <td class="historyTableCellOneLine">
+                {{ formatCoordinate(row.latitude) }}, {{ formatCoordinate(row.longitude) }}
               </td>
 
-              <td>
-                <div>{{ formatSpeed(row.display_speed) }}</div>
-                <div class="historyMuted">
-                  Raw: {{ formatSpeed(row.speed) }} | Calc: {{ formatSpeed(row.calculated_speed) }}
-                </div>
+              <td class="historyTableCellOneLine">
+                {{ formatSpeed(row.display_speed) }}
               </td>
 
-              <td>
-                <div>{{ formatBearing(row.display_bearing, row.display_bearing_cardinal) }}</div>
-                <div class="historyMuted">
-                  Raw: {{ formatBearing(row.bearing) }} | Calc: {{ formatBearing(row.calculated_bearing) }}
-                </div>
+              <td class="historyTableCellOneLine">
+                {{ formatBearing(row.display_bearing, row.display_bearing_cardinal) }}
               </td>
 
-              <td>
-                <div class="historySourceGroup">
-                    <span :class="sourceClass(row.speed_source)">
-                      Speed {{ sourceLabel(row.speed_source) }}
-                    </span>
+              <td class="historyTableCellOneLine">
+                <div class="historySourceGroup historySourceGroupCompact">
+                  <span :class="sourceClass(row.speed_source)">
+                    Speed {{ sourceLabel(row.speed_source) }}
+                  </span>
 
                   <span :class="sourceClass(row.bearing_source)">
-                      Bearing {{ sourceLabel(row.bearing_source) }}
-                    </span>
+                    Bearing {{ sourceLabel(row.bearing_source) }}
+                  </span>
                 </div>
               </td>
             </tr>
@@ -286,12 +274,14 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getDriverLocationHistory, listDriverDevices } from '../api/driverLocations'
+import { listGeofences } from '../api/geofences'
 import { loadGoogleMaps } from '../lib/loadGoogleMaps'
 
 const mapEl = ref(null)
 
 const devices = ref([])
 const rows = ref([])
+const geofences = ref([])
 const err = ref('')
 
 const loadingDevices = ref(false)
@@ -299,7 +289,7 @@ const loadingHistory = ref(false)
 
 const filters = ref({
   device_id: '',
-  mode: 'flag',
+  mode: 'standard',
   started_at: '',
   ended_at: '',
 })
@@ -321,6 +311,8 @@ let infoWindow = null
 let polyline = null
 let markers = []
 let flagOverlays = []
+let geofencePolygons = []
+let geofenceLabelMarkers = []
 let FlagOverlayClass = null
 
 const canRefresh = computed(() => {
@@ -335,10 +327,13 @@ const selectedDevice = computed(() => {
   return devices.value.find((device) => device.device_id === filters.value.device_id) || null
 })
 
+const latestHistoryRow = computed(() => {
+  return rows.value.length ? rows.value[rows.value.length - 1] : null
+})
+
 const selectedDeviceLastSeen = computed(() => {
-  if (rows.value.length) {
-    const lastRow = rows.value[rows.value.length - 1]
-    return lastRow?.display_time || lastRow?.device_dtm || lastRow?.timestamp || null
+  if (latestHistoryRow.value) {
+    return latestHistoryRow.value?.display_time || latestHistoryRow.value?.device_dtm || latestHistoryRow.value?.timestamp || null
   }
 
   return selectedDevice.value?.last_seen_at || null
@@ -350,10 +345,14 @@ const totalTablePages = computed(() => {
   return Math.max(1, Math.ceil(totalTableRows.value / tablePageSize.value))
 })
 
+const displayRows = computed(() => {
+  return [...rows.value].reverse()
+})
+
 const paginatedRows = computed(() => {
   const start = (tablePage.value - 1) * tablePageSize.value
   const end = start + tablePageSize.value
-  return rows.value.slice(start, end)
+  return displayRows.value.slice(start, end)
 })
 
 const tableStartRow = computed(() => {
@@ -412,6 +411,7 @@ onMounted(async () => {
     await Promise.all([
       ensureMap(),
       fetchDevices(),
+      fetchGeofences(),
     ])
 
     if (!filters.value.device_id && devices.value.length) {
@@ -459,6 +459,15 @@ async function fetchDevices() {
   }
 }
 
+async function fetchGeofences() {
+  try {
+    const payload = await listGeofences()
+    geofences.value = Array.isArray(payload?.data) ? payload.data : (Array.isArray(payload) ? payload : [])
+  } catch {
+    geofences.value = []
+  }
+}
+
 async function refreshHistory() {
   if (!canRefresh.value) return
 
@@ -466,11 +475,14 @@ async function refreshHistory() {
   err.value = ''
 
   try {
-    const payload = await getDriverLocationHistory({
-      device_id: filters.value.device_id,
-      started_at: toApiDateTime(filters.value.started_at),
-      ended_at: toApiDateTime(filters.value.ended_at),
-    })
+    const [payload] = await Promise.all([
+      getDriverLocationHistory({
+        device_id: filters.value.device_id,
+        started_at: toApiDateTime(filters.value.started_at),
+        ended_at: toApiDateTime(filters.value.ended_at),
+      }),
+      fetchGeofences(),
+    ])
 
     historyMeta.value = payload?.data || {
       device_id: filters.value.device_id,
@@ -555,7 +567,7 @@ function renderMap() {
     const marker = new googleMaps.Marker({
       map,
       position,
-      title: `${formatDateTime(row.display_time)} • ${formatSpeed(row.display_speed)}`,
+      title: formatDateTime(row.display_time),
       icon: {
         path: googleMaps.SymbolPath.CIRCLE,
         scale: 4,
@@ -585,7 +597,17 @@ function renderMap() {
     }
   })
 
-  if (path.length === 1) {
+  const latestPosition = latestHistoryRow.value && latestHistoryRow.value.latitude !== null && latestHistoryRow.value.longitude !== null
+      ? {
+        lat: Number(latestHistoryRow.value.latitude),
+        lng: Number(latestHistoryRow.value.longitude),
+      }
+      : null
+
+  const geofencePointCount = latestPosition ? renderNearbyGeofences(latestPosition, bounds) : 0
+  const totalBoundsPoints = path.length + geofencePointCount
+
+  if (totalBoundsPoints <= 1 && path.length === 1) {
     map.setCenter(path[0])
     map.setZoom(18)
     return
@@ -601,6 +623,12 @@ function clearMapObjects() {
   flagOverlays.forEach((overlay) => overlay.setMap(null))
   flagOverlays = []
 
+  geofencePolygons.forEach((shape) => shape.setMap(null))
+  geofencePolygons = []
+
+  geofenceLabelMarkers.forEach((marker) => marker.setMap(null))
+  geofenceLabelMarkers = []
+
   if (polyline) {
     polyline.setMap(null)
     polyline = null
@@ -610,6 +638,191 @@ function clearMapObjects() {
     infoWindow.close()
   }
 }
+
+
+function renderNearbyGeofences(latestPosition, bounds) {
+  if (!latestPosition) return 0
+
+  let boundsPointCount = 0
+
+  geofences.value.forEach((geofence) => {
+    const center = getGeofenceCenter(geofence)
+    if (!center) return
+
+    const distance = haversineMiles(latestPosition, center)
+    if (distance > 50) return
+
+    const points = extractGeofencePoints(geofence)
+    if (!points.length) return
+
+    const polygonShape = new googleMaps.Polygon({
+      map,
+      paths: points,
+      strokeColor: geofence.color || '#16a34a',
+      strokeOpacity: 0.95,
+      strokeWeight: 2,
+      fillColor: geofence.color || '#16a34a',
+      fillOpacity: 0.12,
+      clickable: false,
+      zIndex: 2,
+    })
+
+    geofencePolygons.push(polygonShape)
+
+    points.forEach((point) => {
+      bounds.extend(point)
+      boundsPointCount += 1
+    })
+
+    const labelMarker = new googleMaps.Marker({
+      map,
+      position: center,
+      clickable: false,
+      zIndex: 3,
+      icon: {
+        path: googleMaps.SymbolPath.CIRCLE,
+        scale: 0.01,
+        fillOpacity: 0,
+        strokeOpacity: 0,
+      },
+      label: {
+        text: String(geofence.name || 'Geofence'),
+        color: '#111827',
+        fontSize: '18px',
+        fontWeight: '700',
+      },
+    })
+
+    geofenceLabelMarkers.push(labelMarker)
+  })
+
+  return boundsPointCount
+}
+
+function extractGeofencePoints(geofence) {
+  const fromGeometryJson = extractPointsFromAny(geofence?.geometry_json)
+  if (fromGeometryJson.length) return fromGeometryJson
+
+  const fromGeometryObject = extractPointsFromAny(geofence?.geometry)
+  if (fromGeometryObject.length) return fromGeometryObject
+
+  const fromPolygonPoints = extractPointsFromAny(geofence?.polygon_points)
+  if (fromPolygonPoints.length) return fromPolygonPoints
+
+  return extractPointsFromAny(geofence?.polygon_points_array)
+}
+
+function extractPointsFromAny(value) {
+  const parsed = parseJsonish(value)
+  return extractPoints(parsed)
+}
+
+function extractPoints(value) {
+  if (!value) return []
+
+  if (Array.isArray(value)) {
+    if (value.length && Array.isArray(value[0]) && !('lat' in (value[0] || {})) && !('lng' in (value[0] || {})) && !('latitude' in (value[0] || {})) && !('longitude' in (value[0] || {}))) {
+      return extractPoints(value[0])
+    }
+
+    const mapped = value
+        .map(normalizePoint)
+        .filter(Boolean)
+
+    return mapped.length >= 3 ? mapped : []
+  }
+
+  if (typeof value === 'object') {
+    if (Array.isArray(value.paths)) return extractPoints(value.paths)
+    if (Array.isArray(value.points)) return extractPoints(value.points)
+
+    if (Array.isArray(value.coordinates)) {
+      const coordinates = Array.isArray(value.coordinates[0]?.[0]) ? value.coordinates[0] : value.coordinates
+      const mapped = coordinates
+          .map((pair) => Array.isArray(pair) && pair.length >= 2 ? { lat: Number(pair[1]), lng: Number(pair[0]) } : null)
+          .filter(Boolean)
+
+      return mapped.length >= 3 ? mapped : []
+    }
+  }
+
+  return []
+}
+
+function normalizePoint(point) {
+  if (!point) return null
+
+  if (Array.isArray(point)) {
+    if (point.length < 2) return null
+
+    const first = Number(point[0])
+    const second = Number(point[1])
+
+    if (!Number.isFinite(first) || !Number.isFinite(second)) return null
+
+    if (Math.abs(first) <= 90 && Math.abs(second) <= 180) {
+      return { lat: first, lng: second }
+    }
+
+    return { lat: second, lng: first }
+  }
+
+  const lat = Number(point.lat ?? point.latitude)
+  const lng = Number(point.lng ?? point.longitude)
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+
+  return { lat, lng }
+}
+
+function getGeofenceCenter(geofence) {
+  const lat = Number(geofence?.center_point_lat)
+  const lng = Number(geofence?.center_point_lng)
+
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    return { lat, lng }
+  }
+
+  const points = extractGeofencePoints(geofence)
+  if (!points.length) return null
+
+  const totals = points.reduce((carry, point) => {
+    carry.lat += point.lat
+    carry.lng += point.lng
+    return carry
+  }, { lat: 0, lng: 0 })
+
+  return {
+    lat: totals.lat / points.length,
+    lng: totals.lng / points.length,
+  }
+}
+
+function parseJsonish(value) {
+  if (!value) return null
+  if (typeof value !== 'string') return value
+
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
+}
+
+function haversineMiles(pointA, pointB) {
+  const toRadians = (degrees) => (degrees * Math.PI) / 180
+  const earthRadiusMiles = 3958.7613
+  const dLat = toRadians(pointB.lat - pointA.lat)
+  const dLng = toRadians(pointB.lng - pointA.lng)
+  const lat1 = toRadians(pointA.lat)
+  const lat2 = toRadians(pointB.lat)
+
+  const a = Math.sin(dLat / 2) ** 2
+      + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+
+  return 2 * earthRadiusMiles * Math.asin(Math.sqrt(a))
+}
+
 
 function focusRow(row) {
   if (!map || row.latitude === null || row.longitude === null) return
@@ -808,3 +1021,32 @@ function escapeHtml(value) {
       .replaceAll("'", '&#039;')
 }
 </script>
+
+<style scoped>
+.historyTableRowTight td {
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+  vertical-align: middle;
+}
+
+.historyTableCellOneLine {
+  white-space: nowrap;
+  line-height: 1.2;
+  font-size: 13px;
+}
+
+.historySourceGroupCompact {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.historySourceGroupCompact :deep(.historySourcePill) {
+  white-space: nowrap;
+}
+
+.historyTableWrap {
+  overflow-x: auto;
+}
+</style>

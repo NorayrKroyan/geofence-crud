@@ -4,7 +4,7 @@
       <div class="modalCard wide geofenceModal" :class="{ mapOnlyMode: props.mapOnly }" :style="modalStyle">
         <div class="modalHeader">
           <div class="modalTitle">
-            <span>{{ props.mapOnly ? (form.name || `Geofence #${form.id || ''}`) : (isEditMode ? `Edit Geofence #${form.id}` : 'New Geofence') }}</span>
+            <span>{{ modalTitle }}</span>
             <span v-if="form.is_delete" class="pillDeleted">Deleted Flag</span>
           </div>
 
@@ -21,13 +21,6 @@
               <div class="formTwoCol dbForm">
                 <div class="formCol">
                   <div class="row">
-                    <div class="lbl">ID</div>
-                    <div class="ctl">
-                      <input class="input" :value="form.id || ''" type="text" disabled />
-                    </div>
-                  </div>
-
-                  <div class="row">
                     <div class="lbl">Name</div>
                     <div class="ctl">
                       <input v-model.trim="form.name" class="input-xl" type="text" />
@@ -36,9 +29,9 @@
                   </div>
 
                   <div class="row">
-                    <div class="lbl">Speed Limit KPH</div>
+                    <div class="lbl">Speed Limit MPH</div>
                     <div class="ctl">
-                      <input v-model="form.speed_limit_kph" class="input" type="number" min="0" />
+                      <input v-model="speedLimitMph" class="input" type="number" min="0" step="1" />
                     </div>
                   </div>
 
@@ -224,6 +217,32 @@ const form = reactive(blankForm())
 const isDesktop = computed(() => viewportWidth.value >= 1024)
 const isEditMode = computed(() => Boolean(form.id))
 const currentPointCount = computed(() => extractBestAvailablePoints().length)
+const modalTitle = computed(() => {
+  if (props.mapOnly) return form.name?.trim() || 'Geofence'
+  if (isEditMode.value) return form.name?.trim() ? `Edit ${form.name.trim()}` : 'Edit Geofence'
+  return 'New Geofence'
+})
+const speedLimitMph = computed({
+  get() {
+    if (form.speed_limit_kph === '' || form.speed_limit_kph == null) return ''
+    const mph = Number(form.speed_limit_kph) * 0.621371
+    return Number.isFinite(mph) ? Math.round(mph) : ''
+  },
+  set(value) {
+    if (value === '' || value == null) {
+      form.speed_limit_kph = ''
+      return
+    }
+
+    const mph = Number(value)
+    if (!Number.isFinite(mph)) {
+      form.speed_limit_kph = ''
+      return
+    }
+
+    form.speed_limit_kph = String(Math.round(mph / 0.621371))
+  },
+})
 
 const modalStyle = computed(() => {
   if (props.mapOnly) {
