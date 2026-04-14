@@ -435,10 +435,15 @@ async function ensureMap() {
   map = new googleMaps.Map(mapEl.value, {
     center: { lat: 39.8283, lng: -98.5795 },
     zoom: 4,
-    mapTypeId: 'hybrid',
+    mapTypeId: 'satellite',
     streetViewControl: false,
     fullscreenControl: true,
     mapTypeControl: true,
+    zoomControl: true,
+    zoomControlOptions: {
+      position: googleMaps.ControlPosition.RIGHT_CENTER,
+    },
+    gestureHandling: 'greedy',
   })
 
   infoWindow = new googleMaps.InfoWindow()
@@ -604,10 +609,11 @@ function renderMap() {
       }
       : null
 
-  const geofencePointCount = latestPosition ? renderNearbyGeofences(latestPosition, bounds) : 0
-  const totalBoundsPoints = path.length + geofencePointCount
+  if (latestPosition) {
+    renderNearbyGeofences(latestPosition)
+  }
 
-  if (totalBoundsPoints <= 1 && path.length === 1) {
+  if (path.length === 1) {
     map.setCenter(path[0])
     map.setZoom(18)
     return
@@ -640,10 +646,8 @@ function clearMapObjects() {
 }
 
 
-function renderNearbyGeofences(latestPosition, bounds) {
-  if (!latestPosition) return 0
-
-  let boundsPointCount = 0
+function renderNearbyGeofences(latestPosition) {
+  if (!latestPosition) return
 
   geofences.value.forEach((geofence) => {
     const center = getGeofenceCenter(geofence)
@@ -669,11 +673,6 @@ function renderNearbyGeofences(latestPosition, bounds) {
 
     geofencePolygons.push(polygonShape)
 
-    points.forEach((point) => {
-      bounds.extend(point)
-      boundsPointCount += 1
-    })
-
     const labelMarker = new googleMaps.Marker({
       map,
       position: center,
@@ -695,8 +694,6 @@ function renderNearbyGeofences(latestPosition, bounds) {
 
     geofenceLabelMarkers.push(labelMarker)
   })
-
-  return boundsPointCount
 }
 
 function extractGeofencePoints(geofence) {
