@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import GeofencesPage from '../pages/GeofencesPage.vue'
 import DeviceHistoryPage from '../pages/DeviceHistoryPage.vue'
+import DriversPage from '../pages/DriversPage.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -18,6 +19,11 @@ const router = createRouter({
       path: '/device-history',
       name: 'device-history',
       component: DeviceHistoryPage,
+    },
+    {
+      path: '/drivers',
+      name: 'drivers',
+      component: DriversPage,
     },
     {
       path: '/:pathMatch(.*)*',

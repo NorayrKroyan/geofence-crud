@@ -6,6 +6,7 @@
       </div>
 
       <div class="pageHeaderActions">
+        <router-link class="btn" :to="{ name: 'drivers' }">Driver Edit</router-link>
         <router-link class="btn" :to="{ name: 'geofences' }">Geofences</router-link>
       </div>
     </div>
