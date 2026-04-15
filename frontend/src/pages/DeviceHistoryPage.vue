@@ -15,7 +15,7 @@
     <div class="card historyFiltersCard">
       <div class="historyFilters">
         <div class="historyField historyFieldDevice">
-          <label class="lblCompact">Device</label>
+          <label class="lblCompact">Driver</label>
           <select
               v-model="filters.device_id"
               class="input"
@@ -30,7 +30,7 @@
                 :key="device.device_id"
                 :value="device.device_id"
             >
-              {{ device.device_id }}
+              {{ device.label || device.device_id }}
             </option>
           </select>
         </div>

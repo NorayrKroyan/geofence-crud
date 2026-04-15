@@ -13,21 +13,39 @@ class DriverLocationController extends Controller
     public function devices(): JsonResponse
     {
         $devices = DriverLocation::query()
-            ->select('device_id')
-            ->selectRaw('MAX(COALESCE(device_dtm, `timestamp`)) AS last_seen_at')
-            ->whereNotNull('device_id')
-            ->whereRaw("TRIM(device_id) <> ''")
-            ->whereRaw("CHAR_LENGTH(TRIM(device_id)) >= 9")
-            ->groupBy('device_id')
-            ->orderBy('device_id')
+            ->join('drivers', 'drivers.id', '=', 'driver_locations.user_id')
+            ->select('driver_locations.device_id')
+            ->selectRaw('MAX(COALESCE(driver_locations.device_dtm, driver_locations.`timestamp`)) AS last_seen_at')
+            ->selectRaw('MAX(drivers.name) AS driver_name')
+            ->selectRaw('MAX(drivers.mobile_number) AS driver_mobile_number')
+            ->whereNotNull('driver_locations.device_id')
+            ->whereRaw("TRIM(driver_locations.device_id) <> ''")
+            ->whereRaw("CHAR_LENGTH(TRIM(driver_locations.device_id)) >= 9")
+            ->whereRaw("LOWER(TRIM(drivers.status)) = 'active'")
+            ->groupBy('driver_locations.device_id')
+            ->orderBy('driver_locations.device_id')
             ->get()
             ->map(function (DriverLocation $row) {
                 $lastSeenAt = $row->getAttribute('last_seen_at');
 
+                $name = trim((string) ($row->getAttribute('driver_name') ?? ''));
+                $number = trim((string) ($row->getAttribute('driver_mobile_number') ?? ''));
+
+                $labelParts = array_values(array_filter([
+                    $name,
+                    $number,
+                ], fn ($value) => $value !== ''));
+
                 return [
                     'device_id' => (string) $row->device_id,
-                    'label' => (string) $row->device_id,
-                    'last_seen_at' => $lastSeenAt ? CarbonImmutable::parse($lastSeenAt)->toIso8601String() : null,
+                    'label' => count($labelParts)
+                        ? implode(' - ', $labelParts)
+                        : (string) $row->device_id,
+                    'name' => $name !== '' ? $name : null,
+                    'mobile_number' => $number !== '' ? $number : null,
+                    'last_seen_at' => $lastSeenAt
+                        ? CarbonImmutable::parse($lastSeenAt)->toIso8601String()
+                        : null,
                 ];
             })
             ->values();
@@ -47,7 +65,9 @@ class DriverLocationController extends Controller
         ]);
 
         $deviceId = trim($validated['device_id']);
+
         $startedAt = CarbonImmutable::parse($validated['started_at']);
+
         $endedAt = CarbonImmutable::parse($validated['ended_at']);
 
         $rows = DriverLocation::query()
@@ -66,20 +86,27 @@ class DriverLocationController extends Controller
             ->get();
 
         $points = [];
+
         $previous = null;
 
         foreach ($rows as $row) {
             $points[] = $this->transformRow($row, $previous);
+
             $previous = $row;
         }
 
         return response()->json([
             'success' => true,
+
             'data' => [
                 'device_id' => $deviceId,
+
                 'started_at' => $startedAt->toIso8601String(),
+
                 'ended_at' => $endedAt->toIso8601String(),
+
                 'count' => count($points),
+
                 'rows' => $points,
             ],
         ]);
@@ -88,37 +115,49 @@ class DriverLocationController extends Controller
     protected function transformRow(DriverLocation $row, ?DriverLocation $previous): array
     {
         $calculated = $this->calculateDerivedMetrics($previous, $row);
-
         $tableSpeed = $row->speed !== null ? round((float) $row->speed, 1) : null;
+
         $tableBearing = $row->direction !== null ? $this->normalizeBearing((float) $row->direction) : null;
 
         $displaySpeed = $tableSpeed ?? $calculated['speed'];
+
         $displayBearing = $tableBearing ?? $calculated['bearing'];
 
         $displayTime = $row->device_dtm ?? $row->timestamp;
 
         $latitude = $row->latitude !== null ? (float) $row->latitude : null;
+
         $longitude = $row->longitude !== null ? (float) $row->longitude : null;
 
         return [
             'id' => $row->id,
+
             'user_id' => $row->user_id,
+
             'device_id' => $row->device_id,
+
             'timestamp' => optional($row->timestamp)->toIso8601String(),
+
             'device_dtm' => optional($row->device_dtm)->toIso8601String(),
+
             'display_time' => optional($displayTime)->toIso8601String(),
 
             'latitude' => $latitude,
+
             'longitude' => $longitude,
 
             'speed' => $tableSpeed,
+
             'bearing' => $tableBearing,
 
             'calculated_speed' => $calculated['speed'],
+
             'calculated_bearing' => $calculated['bearing'],
 
             'display_speed' => $displaySpeed,
+
             'display_bearing' => $displayBearing,
+
             'display_bearing_cardinal' => $displayBearing !== null ? $this->bearingToCardinal($displayBearing) : null,
 
             'speed_source' => $tableSpeed !== null
@@ -140,13 +179,16 @@ class DriverLocationController extends Controller
         if (! $previous) {
             return [
                 'speed' => null,
+
                 'bearing' => null,
             ];
         }
 
         $prevLat = $previous->latitude !== null ? (float) $previous->latitude : null;
+
         $prevLng = $previous->longitude !== null ? (float) $previous->longitude : null;
         $currLat = $current->latitude !== null ? (float) $current->latitude : null;
+
         $currLng = $current->longitude !== null ? (float) $current->longitude : null;
 
         if (
@@ -155,6 +197,7 @@ class DriverLocationController extends Controller
         ) {
             return [
                 'speed' => null,
+
                 'bearing' => null,
             ];
         }
@@ -167,6 +210,7 @@ class DriverLocationController extends Controller
         if (! $previousTime || ! $currentTime) {
             return [
                 'speed' => null,
+
                 'bearing' => $bearing,
             ];
         }
@@ -176,15 +220,18 @@ class DriverLocationController extends Controller
         if ($diffSeconds <= 0) {
             return [
                 'speed' => null,
+
                 'bearing' => $bearing,
             ];
         }
 
         $distanceMiles = $this->distanceMiles($prevLat, $prevLng, $currLat, $currLng);
+
         $speed = round(($distanceMiles / $diffSeconds) * 3600, 1);
 
         return [
             'speed' => is_finite($speed) ? $speed : null,
+
             'bearing' => $bearing,
         ];
     }
@@ -194,15 +241,17 @@ class DriverLocationController extends Controller
         $earthRadiusMiles = 3958.7613;
 
         $lat1Rad = deg2rad($lat1);
+
         $lat2Rad = deg2rad($lat2);
+
         $deltaLat = deg2rad($lat2 - $lat1);
+
         $deltaLng = deg2rad($lng2 - $lng1);
 
         $a = sin($deltaLat / 2) ** 2
             + cos($lat1Rad) * cos($lat2Rad) * sin($deltaLng / 2) ** 2;
 
         $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
-
         return $earthRadiusMiles * $c;
     }
 
@@ -213,15 +262,17 @@ class DriverLocationController extends Controller
         }
 
         $lat1Rad = deg2rad($lat1);
+
         $lat2Rad = deg2rad($lat2);
+
         $deltaLngRad = deg2rad($lng2 - $lng1);
 
         $y = sin($deltaLngRad) * cos($lat2Rad);
+
         $x = cos($lat1Rad) * sin($lat2Rad)
             - sin($lat1Rad) * cos($lat2Rad) * cos($deltaLngRad);
 
         $bearing = rad2deg(atan2($y, $x));
-
         return $this->normalizeBearing($bearing);
     }
 
@@ -239,6 +290,7 @@ class DriverLocationController extends Controller
     protected function bearingToCardinal(float $bearing): string
     {
         $directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+
         $index = (int) round($bearing / 45) % 8;
 
         return $directions[$index];
