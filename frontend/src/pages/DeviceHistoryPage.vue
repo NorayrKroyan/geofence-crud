@@ -167,24 +167,33 @@
             <th>Speed</th>
             <th>Bearing</th>
             <th>Sources</th>
+            <th>Action</th>
+            <th>Geofence</th>
           </tr>
           </thead>
 
           <tbody>
           <tr v-if="loadingHistory">
-            <td class="empty" colspan="5">Loading history...</td>
+            <td class="empty" colspan="7">Loading history...</td>
           </tr>
 
           <tr v-else-if="!totalTableRows">
-            <td class="empty" colspan="5">No rows</td>
+            <td class="empty" colspan="7">No rows</td>
           </tr>
 
           <template v-else>
             <tr
                 v-for="row in paginatedRows"
                 :key="row.id"
-                class="historyClickable historyTableRowTight"
-                @click="focusRow(row)"
+                :ref="(el) => setRowRef(row.id, el)"
+                :class="[
+                  'historyClickable',
+                  'historyTableRowTight',
+                  isOverSpeedInsideGeofence(row) ? 'historyTableRowAlert' : '',
+                  rowHasMatchedEvent(row) ? 'historyTableRowEvent' : '',
+                  activeRowId === row.id ? 'historySelectedRow' : '',
+                ]"
+                @click="selectRow(row, { pan: true, zoom: true, openInfoWindow: true, scroll: false })"
             >
               <td class="historyTableCellOneLine">
                 {{ formatDateTime(row.display_time) }}
@@ -204,14 +213,22 @@
 
               <td class="historyTableCellOneLine">
                 <div class="historySourceGroup historySourceGroupCompact">
-                  <span :class="sourceClass(row.speed_source)">
-                    Speed {{ sourceLabel(row.speed_source) }}
-                  </span>
+                    <span :class="sourceClass(row.speed_source)">
+                      Speed {{ sourceLabel(row.speed_source) }}
+                    </span>
 
                   <span :class="sourceClass(row.bearing_source)">
-                    Bearing {{ sourceLabel(row.bearing_source) }}
-                  </span>
+                      Bearing {{ sourceLabel(row.bearing_source) }}
+                    </span>
                 </div>
+              </td>
+
+              <td class="historyTableCellOneLine">
+                {{ formatMatchedEventActions(row) }}
+              </td>
+
+              <td class="historyTableCellOneLine">
+                {{ formatMatchedEventGeofences(row) }}
               </td>
             </tr>
           </template>
@@ -273,8 +290,9 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getDriverLocationHistory, listDriverDevices } from '../api/driverLocations'
+import { listEventLogs } from '../api/eventLogs'
 import { listGeofences } from '../api/geofences'
 import { loadGoogleMaps } from '../lib/loadGoogleMaps'
 
@@ -283,10 +301,13 @@ const mapEl = ref(null)
 const devices = ref([])
 const rows = ref([])
 const geofences = ref([])
+const eventLogs = ref([])
 const err = ref('')
+const activeRowId = ref(null)
 
 const loadingDevices = ref(false)
 const loadingHistory = ref(false)
+const loadingEventLogs = ref(false)
 
 const filters = ref({
   device_id: '',
@@ -315,6 +336,7 @@ let flagOverlays = []
 let geofencePolygons = []
 let geofenceLabelMarkers = []
 let FlagOverlayClass = null
+const rowRefs = new Map()
 
 const canRefresh = computed(() => {
   return Boolean(
@@ -384,6 +406,38 @@ const visiblePageNumbers = computed(() => {
   return pages
 })
 
+const eventLogByRowId = computed(() => {
+  const mapped = {}
+
+  rows.value.forEach((row) => {
+    mapped[String(row.id)] = null
+  })
+
+  eventLogs.value.forEach((log) => {
+    const match = findNearestHistoryRow(log.created_at)
+    if (!match) return
+
+    const rowTimeValue = match?.display_time || match?.device_dtm || match?.timestamp || null
+    const rowTime = new Date(rowTimeValue).getTime()
+    const logTime = new Date(log.created_at).getTime()
+
+    if (Number.isNaN(rowTime) || Number.isNaN(logTime)) return
+
+    const distance = Math.abs(rowTime - logTime)
+    const key = String(match.id)
+    const current = mapped[key]
+
+    if (!current || distance < current.distance) {
+      mapped[key] = {
+        distance,
+        log,
+      }
+    }
+  })
+
+  return mapped
+})
+
 watch(
     () => filters.value.mode,
     () => {
@@ -391,8 +445,13 @@ watch(
     }
 )
 
-watch(tablePageSize, () => {
+watch(tablePageSize, async () => {
   tablePage.value = 1
+
+  if (activeRowId.value !== null) {
+    await nextTick()
+    scrollSelectedRowIntoView(activeRowId.value)
+  }
 })
 
 watch(totalTablePages, (value) => {
@@ -426,6 +485,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   clearMapObjects()
+  rowRefs.clear()
 })
 
 async function ensureMap() {
@@ -474,11 +534,35 @@ async function fetchGeofences() {
   }
 }
 
+async function fetchEventLogs() {
+  if (!canRefresh.value) {
+    eventLogs.value = []
+    return
+  }
+
+  loadingEventLogs.value = true
+
+  try {
+    const payload = await listEventLogs({
+      device_id: filters.value.device_id,
+      started_at: toApiDateTime(filters.value.started_at),
+      ended_at: toApiDateTime(filters.value.ended_at),
+    })
+
+    eventLogs.value = Array.isArray(payload?.data?.rows) ? payload.data.rows : []
+  } catch {
+    eventLogs.value = []
+  } finally {
+    loadingEventLogs.value = false
+  }
+}
+
 async function refreshHistory() {
   if (!canRefresh.value) return
 
   loadingHistory.value = true
   err.value = ''
+  activeRowId.value = null
 
   try {
     const [payload] = await Promise.all([
@@ -499,9 +583,17 @@ async function refreshHistory() {
 
     rows.value = Array.isArray(payload?.data?.rows) ? payload.data.rows : []
     tablePage.value = 1
+    await fetchEventLogs()
     renderMap()
   } catch (error) {
     rows.value = []
+    eventLogs.value = []
+    historyMeta.value = {
+      device_id: filters.value.device_id,
+      started_at: null,
+      ended_at: null,
+      count: 0,
+    }
     tablePage.value = 1
     clearMapObjects()
     err.value = error?.message || 'Failed to load device history.'
@@ -586,7 +678,7 @@ function renderMap() {
     })
 
     marker.addListener('click', () => {
-      openInfo(row, position)
+      selectRow(row, { pan: false, zoom: false, openInfoWindow: true, scroll: true })
     })
 
     markers.push(marker)
@@ -596,7 +688,7 @@ function renderMap() {
         map,
         position,
         html: buildFlagHtml(row),
-        onClick: () => openInfo(row, position),
+        onClick: () => selectRow(row, { pan: false, zoom: false, openInfoWindow: true, scroll: true }),
       })
 
       flagOverlays.push(overlay)
@@ -645,7 +737,6 @@ function clearMapObjects() {
     infoWindow.close()
   }
 }
-
 
 function renderNearbyGeofences(latestPosition) {
   if (!latestPosition) return
@@ -719,7 +810,14 @@ function extractPoints(value) {
   if (!value) return []
 
   if (Array.isArray(value)) {
-    if (value.length && Array.isArray(value[0]) && !('lat' in (value[0] || {})) && !('lng' in (value[0] || {})) && !('latitude' in (value[0] || {})) && !('longitude' in (value[0] || {}))) {
+    if (
+        value.length &&
+        Array.isArray(value[0]) &&
+        !('lat' in (value[0] || {})) &&
+        !('lng' in (value[0] || {})) &&
+        !('latitude' in (value[0] || {})) &&
+        !('longitude' in (value[0] || {}))
+    ) {
       return extractPoints(value[0])
     }
 
@@ -821,8 +919,23 @@ function haversineMiles(pointA, pointB) {
   return 2 * earthRadiusMiles * Math.asin(Math.sqrt(a))
 }
 
+async function selectRow(row, {
+  pan = true,
+  zoom = true,
+  openInfoWindow = true,
+  scroll = false,
+} = {}) {
+  if (!row) return
 
-function focusRow(row) {
+  activeRowId.value = row.id
+
+  const isVisibleInTable = ensureRowVisible(row.id)
+
+  if (scroll || isVisibleInTable) {
+    await nextTick()
+    scrollSelectedRowIntoView(row.id)
+  }
+
   if (!map || row.latitude === null || row.longitude === null) return
 
   const position = {
@@ -830,13 +943,52 @@ function focusRow(row) {
     lng: Number(row.longitude),
   }
 
-  map.panTo(position)
+  if (pan) {
+    map.panTo(position)
+  }
 
-  if (map.getZoom() < 17) {
+  if (zoom && map.getZoom() < 17) {
     map.setZoom(17)
   }
 
-  openInfo(row, position)
+  if (openInfoWindow) {
+    openInfo(row, position)
+  }
+}
+
+function ensureRowVisible(rowId) {
+  const index = displayRows.value.findIndex((row) => row.id === rowId)
+
+  if (index === -1) return false
+
+  const neededPage = Math.floor(index / tablePageSize.value) + 1
+
+  if (tablePage.value !== neededPage) {
+    tablePage.value = neededPage
+  }
+
+  return true
+}
+
+function scrollSelectedRowIntoView(rowId) {
+  const element = rowRefs.get(String(rowId))
+
+  if (!element || typeof element.scrollIntoView !== 'function') return
+
+  element.scrollIntoView({
+    behavior: 'smooth',
+    block: 'center',
+  })
+}
+
+function setRowRef(rowId, el) {
+  const key = String(rowId)
+
+  if (el) {
+    rowRefs.set(key, el)
+  } else {
+    rowRefs.delete(key)
+  }
 }
 
 function openInfo(row, position) {
@@ -979,9 +1131,157 @@ function formatTimeOnly(value) {
   })
 }
 
+function findNearestHistoryRow(eventTime) {
+  if (!eventTime || !rows.value.length) return null
+
+  const target = new Date(eventTime).getTime()
+
+  if (Number.isNaN(target)) return null
+
+  let nearest = null
+  let nearestDistance = Number.POSITIVE_INFINITY
+
+  rows.value.forEach((row) => {
+    const rowTimeValue = row?.display_time || row?.device_dtm || row?.timestamp || null
+    const rowTime = new Date(rowTimeValue).getTime()
+
+    if (Number.isNaN(rowTime)) return
+
+    const distance = Math.abs(rowTime - target)
+
+    if (distance < nearestDistance) {
+      nearest = row
+      nearestDistance = distance
+    }
+  })
+
+  return nearest
+}
+
+function matchedEventLog(row) {
+  return eventLogByRowId.value[String(row.id)]?.log || null
+}
+
+function rowHasMatchedEvent(row) {
+  return Boolean(matchedEventLog(row))
+}
+
+function formatMatchedEventActions(row) {
+  const log = matchedEventLog(row)
+  return log ? formatEventLogAction(log.action) : '—'
+}
+
+function formatMatchedEventGeofences(row) {
+  const log = matchedEventLog(row)
+
+  if (!log) return '—'
+
+  return log.geofence_name || (log.geofence_id !== null && log.geofence_id !== undefined ? `#${log.geofence_id}` : '—')
+}
+
+function formatEventLogAction(action) {
+  const normalized = String(action || '').trim().toLowerCase()
+
+  if (normalized === 'entry' || normalized === 'entered') return 'Entry'
+  if (normalized === 'exit' || normalized === 'exited') return 'Exit'
+
+  return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : '—'
+}
+
 function formatCoordinate(value) {
   if (value === null || value === undefined || value === '') return '—'
   return Number(value).toFixed(6)
+}
+
+function isOverSpeedInsideGeofence(row) {
+  const point = normalizeHistoryPoint(row)
+  if (!point) return false
+
+  const speedKph = Number(row?.display_speed)
+  if (!Number.isFinite(speedKph) || speedKph <= 0) return false
+
+  return geofences.value.some((geofence) => {
+    if (!isGeofenceUsable(geofence)) return false
+
+    const speedLimitKph = Number(geofence?.speed_limit_kph)
+    if (!Number.isFinite(speedLimitKph) || speedLimitKph <= 0) return false
+    if (speedKph <= speedLimitKph) return false
+
+    const polygon = extractGeofencePoints(geofence)
+    if (polygon.length < 3) return false
+
+    return isPointInsidePolygon(point, polygon)
+  })
+}
+
+function normalizeHistoryPoint(row) {
+  const lat = Number(row?.latitude)
+  const lng = Number(row?.longitude)
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null
+  }
+
+  return { lat, lng }
+}
+
+function isGeofenceUsable(geofence) {
+  if (!geofence) return false
+
+  const isDeleted = Number(geofence.is_delete) === 1
+  if (isDeleted) return false
+
+  if (geofence.is_active === false) return false
+  if (geofence.is_active !== null && geofence.is_active !== undefined && Number(geofence.is_active) === 0) {
+    return false
+  }
+
+  return true
+}
+
+function isPointInsidePolygon(point, polygon) {
+  let inside = false
+
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const start = polygon[j]
+    const end = polygon[i]
+
+    if (isPointOnSegment(point, start, end)) {
+      return true
+    }
+
+    const intersects = ((end.lng > point.lng) !== (start.lng > point.lng))
+        && (
+            point.lat
+            < ((start.lat - end.lat) * (point.lng - end.lng)) / ((start.lng - end.lng) || Number.EPSILON) + end.lat
+        )
+
+    if (intersects) {
+      inside = !inside
+    }
+  }
+
+  return inside
+}
+
+function isPointOnSegment(point, start, end, epsilon = 1e-9) {
+  const cross = ((point.lng - start.lng) * (end.lat - start.lat))
+      - ((point.lat - start.lat) * (end.lng - start.lng))
+
+  if (Math.abs(cross) > epsilon) {
+    return false
+  }
+
+  const dot = ((point.lat - start.lat) * (end.lat - start.lat))
+      + ((point.lng - start.lng) * (end.lng - start.lng))
+
+  if (dot < 0) {
+    return false
+  }
+
+  const squaredLength = ((end.lat - start.lat) ** 2) + ((end.lng - start.lng) ** 2)
+
+  return dot <= squaredLength
 }
 
 function formatSpeed(value) {
@@ -1046,5 +1346,21 @@ function escapeHtml(value) {
 
 .historyTableWrap {
   overflow-x: auto;
+}
+
+.historyTableRowAlert td {
+  background: #fee2e2 !important;
+}
+
+.historyTableRowAlert:hover td {
+  background: #fecaca !important;
+}
+
+.historyTableRowEvent td {
+  box-shadow: inset 0 1px 0 rgba(37, 99, 235, 0.08), inset 0 -1px 0 rgba(37, 99, 235, 0.08);
+}
+
+.historySelectedRow td {
+  box-shadow: inset 0 0 0 2px #2563eb !important;
 }
 </style>
