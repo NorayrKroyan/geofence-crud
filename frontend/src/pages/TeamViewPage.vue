@@ -2,39 +2,56 @@
   <div class="container">
     <div class="pageHeader">
       <div>
-        <p class="pageTitle">Device History</p>
+        <p class="pageTitle">Team View</p>
       </div>
 
       <div class="pageHeaderActions">
-        <router-link class="btn" :to="{ name: 'drivers' }">Driver Edit</router-link>
-        <router-link class="btn" :to="{ name: 'geofences' }">Geofences</router-link>
-        <router-link class="btn" :to="{ name: 'team-view' }">Team View</router-link>
+        <router-link class="btn" to="/drivers">Driver Edit</router-link>
+        <router-link class="btn" to="/geofences">Geofences</router-link>
+        <router-link class="btn" to="/device-history">Device History</router-link>
       </div>
     </div>
 
     <div v-if="err" class="err">{{ err }}</div>
 
-    <div class="card historyFiltersCard">
-      <div class="historyFilters">
-        <div class="historyField historyFieldDevice">
-          <label class="lblCompact">Driver</label>
-          <select
-              v-model="filters.device_id"
-              class="input"
-              :disabled="loadingDevices || !devices.length"
-          >
-            <option value="">
-              {{ loadingDevices ? 'Loading devices...' : 'Choose device' }}
-            </option>
+    <div class="card historyFiltersCard teamFiltersCard">
+      <div class="historyFilters teamHistoryFilters">
+        <div class="historyField teamDriverField">
+          <label class="lblCompact">Drivers</label>
 
-            <option
-                v-for="device in devices"
-                :key="device.device_id"
-                :value="device.device_id"
+          <div ref="driverDropdownRef" class="teamDropdown">
+            <button
+                type="button"
+                class="input teamDropdownTrigger"
+                :class="{ teamDropdownTriggerOpen: driverDropdownOpen }"
+                :disabled="loadingDevices || !devices.length"
+                @click.stop="toggleDriverDropdown"
             >
-              {{ device.label || device.device_id }}
-            </option>
-          </select>
+              <span class="teamDropdownText">{{ selectedDriversLabel }}</span>
+              <span class="teamDropdownArrow">{{ driverDropdownOpen ? '▴' : '▾' }}</span>
+            </button>
+
+            <div v-if="driverDropdownOpen" class="teamDropdownMenu" @click.stop>
+              <div class="teamDropdownList">
+                <label
+                    v-for="device in devices"
+                    :key="device.device_id"
+                    class="teamDropdownRow"
+                >
+                  <input
+                      v-model="filters.device_ids"
+                      type="checkbox"
+                      :value="device.device_id"
+                  />
+                  <span
+                      class="teamDropdownDot"
+                      :style="{ backgroundColor: colorForDevice(device.device_id) }"
+                  ></span>
+                  <span class="teamDropdownName">{{ device.label || device.device_id }}</span>
+                </label>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="historyField">
@@ -64,17 +81,6 @@
               step="60"
           />
         </div>
-
-        <div class="historyField">
-          <label class="lblCompact">&nbsp;</label>
-          <button
-              class="btnPrimary historyRefreshBtn"
-              :disabled="!canRefresh || loadingHistory"
-              @click="refreshHistory"
-          >
-            {{ loadingHistory ? 'Refreshing...' : 'Refresh' }}
-          </button>
-        </div>
       </div>
     </div>
 
@@ -82,35 +88,29 @@
       <div class="historyMapToolbar">
         <div class="historyStatGrid">
           <div class="historyStat">
-            <span class="historyStatLabel">Device</span>
-            <span class="historyStatValue">
-              {{ filters.device_id || '—' }}
-            </span>
+            <span class="historyStatLabel">Drivers</span>
+            <span class="historyStatValue">{{ filters.device_ids.length || '—' }}</span>
           </div>
 
           <div class="historyStat">
             <span class="historyStatLabel">Mode</span>
-            <span class="historyStatValue">
-              {{ filters.mode === 'flag' ? 'Flag' : 'Standard' }}
-            </span>
+            <span class="historyStatValue">{{ filters.mode === 'flag' ? 'Flag' : 'Standard' }}</span>
           </div>
 
           <div class="historyStat">
             <span class="historyStatLabel">Points</span>
-            <span class="historyStatValue">
-              {{ rows.length }}
-            </span>
+            <span class="historyStatValue">{{ rows.length }}</span>
           </div>
 
           <div class="historyStat">
             <span class="historyStatLabel">Last seen</span>
             <span class="historyStatValue">
-              {{ selectedDeviceLastSeen ? formatDateTime(selectedDeviceLastSeen) : '—' }}
+              {{ latestHistoryRow ? formatDateTime(latestHistoryRow.display_time || latestHistoryRow.device_dtm || latestHistoryRow.timestamp) : '—' }}
             </span>
           </div>
         </div>
 
-        <div class="historyLegend">
+        <div class="historyLegend teamLegend">
           <span class="historyLegendItem">
             <span class="historyLegendSwatch historyLegendSwatchPath"></span>
             Path
@@ -120,13 +120,29 @@
             <span class="historyLegendSwatch historyLegendSwatchPoint"></span>
             Points
           </span>
+
+          <span
+              v-for="device in selectedDevices"
+              :key="device.device_id"
+              class="historyLegendItem"
+          >
+            <span
+                class="historyLegendSwatch teamLegendSwatch"
+                :style="{ backgroundColor: colorForDevice(device.device_id) }"
+            ></span>
+            {{ device.label || device.device_id }}
+          </span>
         </div>
       </div>
 
       <div ref="mapEl" class="historyMap"></div>
 
-      <div v-if="!rows.length && !loadingHistory" class="historyEmpty">
-        No history points found for the selected device and range.
+      <div v-if="loadingHistory" class="historyEmpty">
+        Loading history...
+      </div>
+
+      <div v-else-if="!rows.length" class="historyEmpty">
+        No history points found for the selected drivers and range.
       </div>
     </div>
 
@@ -150,6 +166,20 @@
             </option>
           </select>
           <span>rows</span>
+
+          <span class="dtSpacer"></span>
+
+          <span>Driver</span>
+          <select v-model="tableDriverFilter" class="dtSelect historyDriverFilterSelect">
+            <option value="">All selected drivers</option>
+            <option
+                v-for="device in selectedDevices"
+                :key="device.device_id"
+                :value="device.device_id"
+            >
+              {{ device.label || device.device_id }}
+            </option>
+          </select>
         </div>
 
         <div class="dtRight">
@@ -163,6 +193,7 @@
         <table class="table striped">
           <thead>
           <tr>
+            <th>Driver</th>
             <th>Time</th>
             <th>GPS</th>
             <th>Speed</th>
@@ -175,27 +206,37 @@
 
           <tbody>
           <tr v-if="loadingHistory">
-            <td class="empty" colspan="7">Loading history...</td>
+            <td class="empty" colspan="8">Loading history...</td>
           </tr>
 
           <tr v-else-if="!totalTableRows">
-            <td class="empty" colspan="7">No rows</td>
+            <td class="empty" colspan="8">No rows</td>
           </tr>
 
           <template v-else>
             <tr
                 v-for="row in paginatedRows"
-                :key="row.id"
-                :ref="(el) => setRowRef(row.id, el)"
+                :key="row._team_row_key"
+                :ref="(el) => setRowRef(row._team_row_key, el)"
                 :class="[
                   'historyClickable',
                   'historyTableRowTight',
                   isOverSpeedInsideGeofence(row) ? 'historyTableRowAlert' : '',
                   rowHasMatchedEvent(row) ? 'historyTableRowEvent' : '',
-                  activeRowId === row.id ? 'historySelectedRow' : '',
+                  activeRowKey === row._team_row_key ? 'historySelectedRow' : '',
                 ]"
                 @click="selectRow(row, { pan: true, zoom: true, openInfoWindow: true, scroll: false })"
             >
+              <td class="historyTableCellOneLine">
+                  <span class="teamDriverCell">
+                    <span
+                        class="teamDriverDot"
+                        :style="{ backgroundColor: row._team_color }"
+                    ></span>
+                    {{ row._team_driver_label }}
+                  </span>
+              </td>
+
               <td class="historyTableCellOneLine">
                 {{ formatDateTime(row.display_time) }}
               </td>
@@ -304,79 +345,108 @@ const rows = ref([])
 const geofences = ref([])
 const eventLogs = ref([])
 const err = ref('')
-const activeRowId = ref(null)
+const activeRowKey = ref(null)
 
 const loadingDevices = ref(false)
 const loadingHistory = ref(false)
-const loadingEventLogs = ref(false)
+
+const driverDropdownOpen = ref(false)
+const driverDropdownRef = ref(null)
 
 const filters = ref({
-  device_id: '',
+  device_ids: [],
   mode: 'standard',
   started_at: '',
   ended_at: '',
 })
 
-const historyMeta = ref({
-  device_id: null,
-  started_at: null,
-  ended_at: null,
-  count: 0,
-})
-
 const tablePage = ref(1)
 const tablePageSize = ref(25)
 const tablePageSizeOptions = [25, 50, 100, 250]
+const tableDriverFilter = ref('')
 
 let googleMaps = null
 let map = null
 let infoWindow = null
-let polyline = null
+let polylines = []
 let markers = []
 let flagOverlays = []
 let geofencePolygons = []
 let geofenceLabelMarkers = []
 let FlagOverlayClass = null
+let refreshTimer = null
+let refreshSequence = 0
+let isInitializing = true
+
 const rowRefs = new Map()
+
+const teamPalette = [
+  '#40a9ff',
+  '#16a34a',
+  '#f59e0b',
+  '#ef4444',
+  '#8b5cf6',
+  '#06b6d4',
+  '#ec4899',
+  '#84cc16',
+]
 
 const canRefresh = computed(() => {
   return Boolean(
-      filters.value.device_id &&
+      filters.value.device_ids.length &&
       filters.value.started_at &&
       filters.value.ended_at
   )
 })
 
-const selectedDevice = computed(() => {
-  return devices.value.find((device) => device.device_id === filters.value.device_id) || null
+const selectedDevices = computed(() => {
+  const selected = new Set(filters.value.device_ids)
+  return devices.value.filter((device) => selected.has(device.device_id))
+})
+
+const selectedDriverIdsSignature = computed(() => {
+  return JSON.stringify(selectedDevices.value.map((item) => item.device_id))
+})
+
+const selectedDriversLabel = computed(() => {
+  const selectedCount = filters.value.device_ids.length
+
+  if (!selectedCount) return 'Select drivers'
+
+  if (selectedCount === 1) {
+    const selected = devices.value.find((item) => item.device_id === filters.value.device_ids[0])
+    return selected?.label || filters.value.device_ids[0]
+  }
+
+  return `${selectedCount} drivers selected`
 })
 
 const latestHistoryRow = computed(() => {
   return rows.value.length ? rows.value[rows.value.length - 1] : null
 })
 
-const selectedDeviceLastSeen = computed(() => {
-  if (latestHistoryRow.value) {
-    return latestHistoryRow.value?.display_time || latestHistoryRow.value?.device_dtm || latestHistoryRow.value?.timestamp || null
-  }
-
-  return selectedDevice.value?.last_seen_at || null
+const displayRows = computed(() => {
+  return [...rows.value].reverse()
 })
 
-const totalTableRows = computed(() => rows.value.length)
+const filteredTableRows = computed(() => {
+  if (!tableDriverFilter.value) {
+    return displayRows.value
+  }
+
+  return displayRows.value.filter((row) => row._team_device_id === tableDriverFilter.value)
+})
+
+const totalTableRows = computed(() => filteredTableRows.value.length)
 
 const totalTablePages = computed(() => {
   return Math.max(1, Math.ceil(totalTableRows.value / tablePageSize.value))
 })
 
-const displayRows = computed(() => {
-  return [...rows.value].reverse()
-})
-
 const paginatedRows = computed(() => {
   const start = (tablePage.value - 1) * tablePageSize.value
   const end = start + tablePageSize.value
-  return displayRows.value.slice(start, end)
+  return filteredTableRows.value.slice(start, end)
 })
 
 const tableStartRow = computed(() => {
@@ -407,15 +477,24 @@ const visiblePageNumbers = computed(() => {
   return pages
 })
 
-const eventLogByRowId = computed(() => {
+const reactiveFilterSignature = computed(() => {
+  return JSON.stringify({
+    device_ids: [...filters.value.device_ids].sort(),
+    started_at: filters.value.started_at,
+    ended_at: filters.value.ended_at,
+  })
+})
+
+const eventLogByRowKey = computed(() => {
   const mapped = {}
 
   rows.value.forEach((row) => {
-    mapped[String(row.id)] = null
+    mapped[row._team_row_key] = null
   })
 
   eventLogs.value.forEach((log) => {
-    const match = findNearestHistoryRow(log.created_at)
+    const match = findNearestHistoryRow(log.created_at, log._team_device_id)
+
     if (!match) return
 
     const rowTimeValue = match?.display_time || match?.device_dtm || match?.timestamp || null
@@ -425,7 +504,7 @@ const eventLogByRowId = computed(() => {
     if (Number.isNaN(rowTime) || Number.isNaN(logTime)) return
 
     const distance = Math.abs(rowTime - logTime)
-    const key = String(match.id)
+    const key = match._team_row_key
     const current = mapped[key]
 
     if (!current || distance < current.distance) {
@@ -446,12 +525,19 @@ watch(
     }
 )
 
+watch(
+    reactiveFilterSignature,
+    () => {
+      scheduleReactiveRefresh()
+    }
+)
+
 watch(tablePageSize, async () => {
   tablePage.value = 1
 
-  if (activeRowId.value !== null) {
+  if (activeRowKey.value !== null) {
     await nextTick()
-    scrollSelectedRowIntoView(activeRowId.value)
+    scrollSelectedRowIntoView(activeRowKey.value)
   }
 })
 
@@ -465,8 +551,29 @@ watch(totalTablePages, (value) => {
   }
 })
 
+watch(
+    selectedDriverIdsSignature,
+    () => {
+      const stillExists = selectedDevices.value.some((device) => device.device_id === tableDriverFilter.value)
+
+      if (!stillExists) {
+        tableDriverFilter.value = ''
+      }
+
+      tablePage.value = 1
+    }
+)
+
+watch(
+    tableDriverFilter,
+    () => {
+      tablePage.value = 1
+    }
+)
+
 onMounted(async () => {
   applyDefaultRange()
+  document.addEventListener('click', handleOutsideDropdownClick)
 
   try {
     await Promise.all([
@@ -475,16 +582,31 @@ onMounted(async () => {
       fetchGeofences(),
     ])
 
-    if (!filters.value.device_id && devices.value.length) {
-      filters.value.device_id = devices.value[0].device_id
+    if (!filters.value.device_ids.length && devices.value.length) {
+      filters.value.device_ids = devices.value
+          .slice(0, Math.min(3, devices.value.length))
+          .map((item) => item.device_id)
+    }
+
+    isInitializing = false
+
+    if (canRefresh.value) {
       await refreshHistory()
     }
   } catch (error) {
     err.value = error?.message || 'Failed to initialize the page.'
+    isInitializing = false
   }
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('click', handleOutsideDropdownClick)
+
+  if (refreshTimer) {
+    clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
+
   clearMapObjects()
   rowRefs.clear()
 })
@@ -518,9 +640,22 @@ async function fetchDevices() {
   try {
     const payload = await listDriverDevices()
 
-    devices.value = Array.isArray(payload?.data)
+    const raw = Array.isArray(payload?.data)
         ? payload.data.filter((item) => String(item?.device_id || '').trim().length >= 9)
         : []
+
+    const seen = new Set()
+
+    devices.value = raw.filter((item) => {
+      const key = String(item?.device_id || '').trim()
+
+      if (!key || seen.has(key)) {
+        return false
+      }
+
+      seen.add(key)
+      return true
+    })
   } finally {
     loadingDevices.value = false
   }
@@ -535,71 +670,132 @@ async function fetchGeofences() {
   }
 }
 
-async function fetchEventLogs() {
+function scheduleReactiveRefresh() {
+  if (isInitializing) return
+
+  if (refreshTimer) {
+    clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
+
   if (!canRefresh.value) {
-    eventLogs.value = []
+    clearHistoryData()
     return
   }
 
-  loadingEventLogs.value = true
-
-  try {
-    const payload = await listEventLogs({
-      device_id: filters.value.device_id,
-      started_at: toApiDateTime(filters.value.started_at),
-      ended_at: toApiDateTime(filters.value.ended_at),
-    })
-
-    eventLogs.value = Array.isArray(payload?.data?.rows) ? payload.data.rows : []
-  } catch {
-    eventLogs.value = []
-  } finally {
-    loadingEventLogs.value = false
-  }
+  refreshTimer = setTimeout(() => {
+    refreshHistory()
+  }, 250)
 }
 
 async function refreshHistory() {
-  if (!canRefresh.value) return
+  if (!canRefresh.value) {
+    clearHistoryData()
+    return
+  }
+
+  const requestId = ++refreshSequence
 
   loadingHistory.value = true
   err.value = ''
-  activeRowId.value = null
+  activeRowKey.value = null
 
   try {
-    const [payload] = await Promise.all([
-      getDriverLocationHistory({
-        device_id: filters.value.device_id,
-        started_at: toApiDateTime(filters.value.started_at),
-        ended_at: toApiDateTime(filters.value.ended_at),
-      }),
-      fetchGeofences(),
-    ])
+    await fetchGeofences()
 
-    historyMeta.value = payload?.data || {
-      device_id: filters.value.device_id,
-      started_at: null,
-      ended_at: null,
-      count: 0,
-    }
+    const selectedIds = [...filters.value.device_ids]
 
-    rows.value = Array.isArray(payload?.data?.rows) ? payload.data.rows : []
+    const payloads = await Promise.all(
+        selectedIds.map(async (deviceId) => {
+          const [historyPayload, eventPayload] = await Promise.all([
+            getDriverLocationHistory({
+              device_id: deviceId,
+              started_at: toApiDateTime(filters.value.started_at),
+              ended_at: toApiDateTime(filters.value.ended_at),
+            }),
+            listEventLogs({
+              device_id: deviceId,
+              started_at: toApiDateTime(filters.value.started_at),
+              ended_at: toApiDateTime(filters.value.ended_at),
+            }).catch(() => ({ data: { rows: [] } })),
+          ])
+
+          return {
+            deviceId,
+            historyPayload,
+            eventPayload,
+          }
+        })
+    )
+
+    if (requestId !== refreshSequence) return
+
+    const combinedRows = []
+    const combinedEventLogs = []
+
+    payloads.forEach(({ deviceId, historyPayload, eventPayload }) => {
+      const driver = devices.value.find((item) => item.device_id === deviceId) || null
+      const driverLabel = driver?.label || deviceId
+      const color = colorForDevice(deviceId)
+
+      const historyRows = Array.isArray(historyPayload?.data?.rows) ? historyPayload.data.rows : []
+      const logRows = Array.isArray(eventPayload?.data?.rows) ? eventPayload.data.rows : []
+
+      historyRows.forEach((row, index) => {
+        const baseId = row?.id ?? `idx-${index}`
+
+        combinedRows.push({
+          ...row,
+          _team_device_id: deviceId,
+          _team_driver_label: driverLabel,
+          _team_color: color,
+          _team_row_key: `${deviceId}:${baseId}:${index}`,
+        })
+      })
+
+      logRows.forEach((log) => {
+        combinedEventLogs.push({
+          ...log,
+          _team_device_id: deviceId,
+        })
+      })
+    })
+
+    combinedRows.sort((left, right) => {
+      return rowTimeMs(left) - rowTimeMs(right)
+    })
+
+    rows.value = combinedRows
+    eventLogs.value = combinedEventLogs
     tablePage.value = 1
-    await fetchEventLogs()
     renderMap()
   } catch (error) {
+    if (requestId !== refreshSequence) return
+
     rows.value = []
     eventLogs.value = []
-    historyMeta.value = {
-      device_id: filters.value.device_id,
-      started_at: null,
-      ended_at: null,
-      count: 0,
-    }
     tablePage.value = 1
     clearMapObjects()
-    err.value = error?.message || 'Failed to load device history.'
+    err.value = error?.message || 'Failed to load team view.'
   } finally {
-    loadingHistory.value = false
+    if (requestId === refreshSequence) {
+      loadingHistory.value = false
+    }
+  }
+}
+
+function clearHistoryData() {
+  rows.value = []
+  eventLogs.value = []
+  activeRowKey.value = null
+  tablePage.value = 1
+  tableDriverFilter.value = ''
+  loadingHistory.value = false
+  clearMapObjects()
+
+  if (map) {
+    map.setCenter({ lat: 39.8283, lng: -98.5795 })
+    map.setZoom(4)
   }
 }
 
@@ -615,108 +811,135 @@ function renderMap() {
   }
 
   const bounds = new googleMaps.LatLngBounds()
-
-  const path = rows.value
-      .filter((row) => row.latitude !== null && row.longitude !== null)
-      .map((row) => {
-        const position = {
-          lat: Number(row.latitude),
-          lng: Number(row.longitude),
-        }
-
-        bounds.extend(position)
-        return position
-      })
-
-  if (!path.length) return
-
-  polyline = new googleMaps.Polyline({
-    map,
-    path,
-    geodesic: true,
-    strokeColor: '#40a9ff',
-    strokeOpacity: 0.95,
-    strokeWeight: 4,
-    icons: path.length > 1
-        ? [
-          {
-            icon: {
-              path: googleMaps.SymbolPath.FORWARD_CLOSED_ARROW,
-              scale: 3.5,
-              fillColor: '#40a9ff',
-              fillOpacity: 1,
-              strokeColor: '#40a9ff',
-              strokeWeight: 1,
-            },
-            offset: '100%',
-            repeat: '90px',
-          },
-        ]
-        : [],
-  })
+  const rowsByDevice = new Map()
+  let totalPathPoints = 0
 
   rows.value.forEach((row) => {
-    if (row.latitude === null || row.longitude === null) return
+    const key = row._team_device_id
 
-    const position = {
-      lat: Number(row.latitude),
-      lng: Number(row.longitude),
+    if (!rowsByDevice.has(key)) {
+      rowsByDevice.set(key, [])
     }
 
-    const marker = new googleMaps.Marker({
-      map,
-      position,
-      title: formatDateTime(row.display_time),
-      icon: {
-        path: googleMaps.SymbolPath.CIRCLE,
-        scale: 4,
-        fillColor: '#1d4ed8',
-        fillOpacity: 1,
-        strokeColor: '#ffffff',
-        strokeWeight: 1.2,
-      },
-      zIndex: 5,
-    })
+    rowsByDevice.get(key).push(row)
+  })
 
-    marker.addListener('click', () => {
-      selectRow(row, { pan: false, zoom: false, openInfoWindow: true, scroll: true })
-    })
+  const latestPositions = []
 
-    markers.push(marker)
+  rowsByDevice.forEach((deviceRows, deviceId) => {
+    const color = deviceRows[0]?._team_color || colorForDevice(deviceId)
 
-    if (filters.value.mode === 'flag' && FlagOverlayClass) {
-      const overlay = new FlagOverlayClass({
+    const path = deviceRows
+        .filter((row) => row.latitude !== null && row.longitude !== null)
+        .map((row) => {
+          const position = {
+            lat: Number(row.latitude),
+            lng: Number(row.longitude),
+          }
+
+          bounds.extend(position)
+          totalPathPoints += 1
+          return position
+        })
+
+    if (path.length) {
+      const polyline = new googleMaps.Polyline({
         map,
-        position,
-        html: buildFlagHtml(row),
-        onClick: () => selectRow(row, { pan: false, zoom: false, openInfoWindow: true, scroll: true }),
+        path,
+        geodesic: true,
+        strokeColor: color,
+        strokeOpacity: 0.95,
+        strokeWeight: 4,
+        icons: path.length > 1
+            ? [
+              {
+                icon: {
+                  path: googleMaps.SymbolPath.FORWARD_CLOSED_ARROW,
+                  scale: 3.5,
+                  fillColor: color,
+                  fillOpacity: 1,
+                  strokeColor: color,
+                  strokeWeight: 1,
+                },
+                offset: '100%',
+                repeat: '90px',
+              },
+            ]
+            : [],
       })
 
-      flagOverlays.push(overlay)
+      polylines.push(polyline)
+    }
+
+    deviceRows.forEach((row) => {
+      if (row.latitude === null || row.longitude === null) return
+
+      const position = {
+        lat: Number(row.latitude),
+        lng: Number(row.longitude),
+      }
+
+      const marker = new googleMaps.Marker({
+        map,
+        position,
+        title: `${row._team_driver_label} - ${formatDateTime(row.display_time)}`,
+        icon: {
+          path: googleMaps.SymbolPath.CIRCLE,
+          scale: 4,
+          fillColor: row._team_color,
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 1.2,
+        },
+        zIndex: 5,
+        visible: filters.value.mode !== 'flag',
+      })
+
+      marker.addListener('click', () => {
+        selectRow(row, { pan: false, zoom: false, openInfoWindow: true, scroll: true })
+      })
+
+      markers.push(marker)
+
+      if (filters.value.mode === 'flag' && FlagOverlayClass) {
+        const overlay = new FlagOverlayClass({
+          map,
+          position,
+          html: buildFlagHtml(row),
+          onClick: () => selectRow(row, { pan: false, zoom: false, openInfoWindow: true, scroll: true }),
+        })
+
+        flagOverlays.push(overlay)
+      }
+    })
+
+    const latestRow = [...deviceRows].reverse().find((row) => row.latitude !== null && row.longitude !== null)
+
+    if (latestRow) {
+      latestPositions.push({
+        lat: Number(latestRow.latitude),
+        lng: Number(latestRow.longitude),
+      })
     }
   })
 
-  const latestPosition = latestHistoryRow.value && latestHistoryRow.value.latitude !== null && latestHistoryRow.value.longitude !== null
-      ? {
-        lat: Number(latestHistoryRow.value.latitude),
-        lng: Number(latestHistoryRow.value.longitude),
-      }
-      : null
+  renderNearbyGeofences(latestPositions)
 
-  if (latestPosition) {
-    renderNearbyGeofences(latestPosition)
-  }
-
-  if (path.length === 1) {
-    map.setCenter(path[0])
+  if (totalPathPoints === 1) {
+    map.setCenter(bounds.getCenter())
     map.setZoom(18)
     return
   }
 
-  map.fitBounds(bounds, 48)
+  if (!bounds.isEmpty()) {
+    map.fitBounds(bounds, 48)
+  }
 }
 
 function clearMapObjects() {
+  polylines.forEach((shape) => shape.setMap(null))
+  polylines = []
+
   markers.forEach((marker) => marker.setMap(null))
   markers = []
 
@@ -729,28 +952,33 @@ function clearMapObjects() {
   geofenceLabelMarkers.forEach((marker) => marker.setMap(null))
   geofenceLabelMarkers = []
 
-  if (polyline) {
-    polyline.setMap(null)
-    polyline = null
-  }
-
   if (infoWindow) {
     infoWindow.close()
   }
 }
 
-function renderNearbyGeofences(latestPosition) {
-  if (!latestPosition) return
+function renderNearbyGeofences(latestPositions) {
+  if (!Array.isArray(latestPositions) || !latestPositions.length) return
+
+  const renderedKeys = new Set()
 
   geofences.value.forEach((geofence) => {
     const center = getGeofenceCenter(geofence)
     if (!center) return
 
-    const distance = haversineMiles(latestPosition, center)
-    if (distance > 50) return
+    const isNearby = latestPositions.some((position) => {
+      return haversineMiles(position, center) <= 50
+    })
+
+    if (!isNearby) return
 
     const points = extractGeofencePoints(geofence)
     if (!points.length) return
+
+    const geofenceKey = String(geofence.id ?? geofence.name ?? `${center.lat}:${center.lng}`)
+
+    if (renderedKeys.has(geofenceKey)) return
+    renderedKeys.add(geofenceKey)
 
     const polygonShape = new googleMaps.Polygon({
       map,
@@ -928,13 +1156,13 @@ async function selectRow(row, {
 } = {}) {
   if (!row) return
 
-  activeRowId.value = row.id
+  activeRowKey.value = row._team_row_key
 
-  const isVisibleInTable = ensureRowVisible(row.id)
+  const isVisibleInTable = ensureRowVisible(row._team_row_key)
 
   if (scroll || isVisibleInTable) {
     await nextTick()
-    scrollSelectedRowIntoView(row.id)
+    scrollSelectedRowIntoView(row._team_row_key)
   }
 
   if (!map || row.latitude === null || row.longitude === null) return
@@ -957,8 +1185,8 @@ async function selectRow(row, {
   }
 }
 
-function ensureRowVisible(rowId) {
-  const index = displayRows.value.findIndex((row) => row.id === rowId)
+function ensureRowVisible(rowKey) {
+  const index = filteredTableRows.value.findIndex((row) => row._team_row_key === rowKey)
 
   if (index === -1) return false
 
@@ -971,8 +1199,8 @@ function ensureRowVisible(rowId) {
   return true
 }
 
-function scrollSelectedRowIntoView(rowId) {
-  const element = rowRefs.get(String(rowId))
+function scrollSelectedRowIntoView(rowKey) {
+  const element = rowRefs.get(String(rowKey))
 
   if (!element || typeof element.scrollIntoView !== 'function') return
 
@@ -982,8 +1210,8 @@ function scrollSelectedRowIntoView(rowId) {
   })
 }
 
-function setRowRef(rowId, el) {
-  const key = String(rowId)
+function setRowRef(rowKey, el) {
+  const key = String(rowKey)
 
   if (el) {
     rowRefs.set(key, el)
@@ -1008,10 +1236,11 @@ function buildInfoHtml(row) {
   return `
     <div class="historyInfoWindow">
       <div class="historyInfoTitle">${escapeHtml(formatDateTime(row.display_time))}</div>
+      <div class="historyInfoLine"><strong>Driver:</strong> ${escapeHtml(row._team_driver_label || row._team_device_id)}</div>
       <div class="historyInfoLine"><strong>GPS:</strong> ${escapeHtml(gps)}</div>
       <div class="historyInfoLine"><strong>Speed:</strong> ${escapeHtml(speed)}</div>
       <div class="historyInfoLine"><strong>Bearing:</strong> ${escapeHtml(bearing)}</div>
-      <div class="historyInfoLine"><strong>Record ID:</strong> ${escapeHtml(String(row.id))}</div>
+      <div class="historyInfoLine"><strong>Record ID:</strong> ${escapeHtml(String(row.id ?? '—'))}</div>
       ${
       row.google_maps_url
           ? `<div class="historyInfoActions"><a href="${row.google_maps_url}" target="_blank" rel="noopener noreferrer">View on Google Maps</a></div>`
@@ -1081,6 +1310,12 @@ function buildFlagOverlayClass(google) {
   }
 }
 
+function rowTimeMs(row) {
+  const value = row?.display_time || row?.device_dtm || row?.timestamp || null
+  const time = new Date(value).getTime()
+  return Number.isNaN(time) ? 0 : time
+}
+
 function setTablePage(page) {
   const normalized = Math.min(Math.max(1, page), totalTablePages.value)
   tablePage.value = normalized
@@ -1132,7 +1367,7 @@ function formatTimeOnly(value) {
   })
 }
 
-function findNearestHistoryRow(eventTime) {
+function findNearestHistoryRow(eventTime, deviceId = null) {
   if (!eventTime || !rows.value.length) return null
 
   const target = new Date(eventTime).getTime()
@@ -1143,6 +1378,8 @@ function findNearestHistoryRow(eventTime) {
   let nearestDistance = Number.POSITIVE_INFINITY
 
   rows.value.forEach((row) => {
+    if (deviceId && row._team_device_id !== deviceId) return
+
     const rowTimeValue = row?.display_time || row?.device_dtm || row?.timestamp || null
     const rowTime = new Date(rowTimeValue).getTime()
 
@@ -1160,7 +1397,7 @@ function findNearestHistoryRow(eventTime) {
 }
 
 function matchedEventLog(row) {
-  return eventLogByRowId.value[String(row.id)]?.log || null
+  return eventLogByRowKey.value[row._team_row_key]?.log || null
 }
 
 function rowHasMatchedEvent(row) {
@@ -1311,6 +1548,32 @@ function sourceClass(source) {
   return 'historySourcePill'
 }
 
+function colorForDevice(deviceId) {
+  const value = String(deviceId || '')
+  let hash = 0
+
+  for (let i = 0; i < value.length; i += 1) {
+    hash = ((hash << 5) - hash) + value.charCodeAt(i)
+    hash |= 0
+  }
+
+  return teamPalette[Math.abs(hash) % teamPalette.length]
+}
+
+function toggleDriverDropdown() {
+  driverDropdownOpen.value = !driverDropdownOpen.value
+}
+
+function handleOutsideDropdownClick(event) {
+  const root = driverDropdownRef.value
+
+  if (!root) return
+
+  if (!root.contains(event.target)) {
+    driverDropdownOpen.value = false
+  }
+}
+
 function escapeHtml(value) {
   return String(value ?? '')
       .replaceAll('&', '&amp;')
@@ -1322,6 +1585,19 @@ function escapeHtml(value) {
 </script>
 
 <style scoped>
+.teamFiltersCard {
+  position: relative;
+  overflow: visible !important;
+  z-index: 30;
+}
+
+.teamHistoryFilters {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.35fr) minmax(180px, 0.9fr) minmax(220px, 1fr) minmax(220px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
 .historyTableRowTight td {
   padding-top: 6px !important;
   padding-bottom: 6px !important;
@@ -1363,5 +1639,132 @@ function escapeHtml(value) {
 
 .historySelectedRow td {
   box-shadow: inset 0 0 0 2px #2563eb !important;
+}
+
+.teamLegend {
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.teamLegendSwatch {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+}
+
+.teamDriverCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.teamDriverDot,
+.teamDropdownDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+  flex: 0 0 10px;
+}
+
+.teamDriverField {
+  position: relative;
+  min-width: 0;
+  z-index: 40;
+}
+
+.teamDropdown {
+  position: relative;
+  z-index: 80;
+}
+
+.teamDropdownTrigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  line-height: inherit;
+  background: #fff;
+}
+
+.teamDropdownTriggerOpen {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.teamDropdownText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teamDropdownArrow {
+  margin-left: 8px;
+  color: #64748b;
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+
+.teamDropdownMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 100%;
+  min-width: 100%;
+  z-index: 120;
+  background: #fff;
+  border: 1px solid #dbe4ee;
+  border-radius: 10px;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.14);
+  padding: 8px;
+  overflow: hidden;
+}
+
+.teamDropdownList {
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.teamDropdownRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.teamDropdownRow:hover {
+  background: #f8fafc;
+}
+
+.teamDropdownName {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.dtSpacer {
+  display: inline-block;
+  width: 12px;
+}
+
+.historyDriverFilterSelect {
+  min-width: 240px;
+}
+
+@media (max-width: 1180px) {
+  .teamHistoryFilters {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .teamHistoryFilters {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

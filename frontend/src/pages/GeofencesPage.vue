@@ -5,6 +5,7 @@
 
       <div class="pageHeaderActions">
         <router-link class="btn" :to="{ name: 'device-history' }">Device history</router-link>
+        <router-link class="btn" :to="{ name: 'team-view' }">Team View</router-link>
         <button class="btnPrimary" @click="openNew">New Geofence</button>
       </div>
     </div>

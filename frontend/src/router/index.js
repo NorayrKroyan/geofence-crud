@@ -1,7 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
+
 import GeofencesPage from '../pages/GeofencesPage.vue'
 import DeviceHistoryPage from '../pages/DeviceHistoryPage.vue'
 import DriversPage from '../pages/DriversPage.vue'
+import TeamViewPage from '../pages/TeamViewPage.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -24,6 +26,11 @@ const router = createRouter({
       path: '/drivers',
       name: 'drivers',
       component: DriversPage,
+    },
+    {
+      path: '/team-view',
+      name: 'team-view',
+      component: TeamViewPage,
     },
     {
       path: '/:pathMatch(.*)*',
